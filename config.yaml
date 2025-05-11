@@ -1,3 +1,5 @@
 data:
-  source: "data/wordsChar.csv"
-  index: "out/words.index"
+  source: "data/wordsChar_short.csv"
+  index: "out/words_short.index"
+
+encoder: "paraphrase-mpnet-base-v2"
