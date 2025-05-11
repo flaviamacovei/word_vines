@@ -11,7 +11,7 @@ DESTFILE = CM().get('data.index')
 df = pd.read_csv(SOURCEFILE)["word"].to_frame()
 
 text = df["word"]
-encoder = SentenceTransformer("paraphrase-mpnet-base-v2")
+encoder = SentenceTransformer(CM().get('encoder'))
 vectors = encoder.encode(text)
 
 df['vectors'] = vectors.tolist()
