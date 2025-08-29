@@ -16,6 +16,7 @@ async def map_word(word: str):
     if not word_viner.in_vocab(word):
         raise HTTPException(status_code=404, detail="Word not found")
     else:
+        word_viner.input(word)
         return {"centre": word,
-                "synonyms": word_viner.get_synonyms(word),
-                "positions": word_viner.get_positions(word)}
+                "synonyms": word_viner.get_synonyms(),
+                "positions": word_viner.get_positions()}
