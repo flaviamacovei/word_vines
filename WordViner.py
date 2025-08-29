@@ -1,27 +1,42 @@
 import numpy as np
 import gensim.downloader as api
-from sklearn.manifold import Isomap
+from umap import UMAP
+import pickle
+import os
 
 class WordViner:
     def __init__(self):
         self.SMALL_DIM = 2
+        self.NUM_NEIGHBOURS = 10
+        self.TOLERANCE = 0.8
         # centre of current display
         self.offset = np.zeros(self.SMALL_DIM)
         # if the origin is the position of a word then that is saved in current_word, otherwise it is None
         self.current_word = None
 
         # relative positions of neighbouring words (in SMALL_DIM dimensions)
-        self.neighbouring_positions_rel = None
+        self.synonyms_pos_rel = None
         # absolute positions of neighbouring words (in SMALL_DIM dimensions)
-        self.neighbouring_positions_abs = None
+        self.synonyms_pos_abs = None
         # decodings of neighbouring words
-        self.neighbouring_words = []
+        self.synonyms = []
 
-        # word2vec model with vocab size 3_000_000, dimensions 300
+        self.embeddings_path = 'data/w2v_projection.pkl'
         self.w2v = api.load('word2vec-google-news-300')
-        self.isomap = Isomap(radius = 10, n_neighbors = None, n_components = self.SMALL_DIM, path_method = 'auto', metric = 'minkowski', p = 2)
-        self.w2v_small_vectors = self.isomap.fit_transform(self.w2v.vectors)
-        print(f"w2v_small: {self.w2v_small_vectors.shape}")
+        # available models: print(list(gensim.downloader.info()['models'].keys()))
+        self.projector = self.load_or_save_embeddings()
+
+    def load_or_save_embeddings(self):
+        if os.path.exists(self.embeddings_path):
+            with open(self.embeddings_path, 'rb') as f:
+                return pickle.load(f)
+        else:
+            print("Saved embeddings not found, performing umap...")
+            umap = UMAP(n_components = 2, init = 'random', random_state = 0)
+            projector = umap.fit(self.w2v.vectors)
+            with open(self.embeddings_path, 'wb') as f:
+                pickle.dump(projector, f)
+            return projector
 
     def in_vocab(self, word: str):
         # this might add unnecessary computation, maybe find a different way
@@ -35,18 +50,36 @@ class WordViner:
         big_embedding = self.w2v[word]
         self.current_word = word
         self.offset = self.project(big_embedding[None]) # add batch dimension of size 1
+        print(f"offset: {self.offset}")
         self.recalculate_synonyms()
 
-    def project(self, big_embedding):
-        batch_size = big_embedding.shape[0]
-        small_embedding = np.random.rand(batch_size, self.SMALL_DIM)
-        return small_embedding
+    def project(self, big_embeddings):
+        small_embeddings = self.projector.transform(big_embeddings)
+        return small_embeddings
 
     def recalculate_synonyms(self):
-        pass
+        # get synonyms from word2vec
+        synonyms_dict = self.w2v.most_similar(positive = [self.current_word], topn = self.NUM_NEIGHBOURS)
+        # prune distant words
+        filter(lambda item: item[1] <= self.TOLERANCE, synonyms_dict)
+        # still to do:
+        # - remove redundant words (eg capitalised and non-capitalised)
+        # - remove words that aren't in some accepted vocabulary of actual words <- is this a preprocessing step?
+        # extract words
+        self.synonyms = [item[0] for item in synonyms_dict]
+        big_embeddings = np.stack([self.w2v[word] for word in self.synonyms])
+        self.synonyms_pos_abs = self.project(big_embeddings)
+
+        # normalise positions
+        # centre
+        self.synonyms_pos_rel = self.synonyms_pos_abs - self.offset
+        # scale
+        scale_factor = np.max(np.abs(self.synonyms_pos_rel))
+
+        self.synonyms_pos_rel = self.synonyms_pos_rel / scale_factor
 
     def get_synonyms(self):
-        return self.neighbouring_words
+        return self.synonyms
 
     def get_positions(self):
-        return self.neighbouring_positions_rel
+        return self.synonyms_pos_rel
