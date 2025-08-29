@@ -1,5 +1,6 @@
 import numpy as np
 import gensim.downloader as api
+from sklearn.manifold import Isomap
 
 class WordViner:
     def __init__(self):
@@ -15,7 +16,12 @@ class WordViner:
         self.neighbouring_positions_abs = None
         # decodings of neighbouring words
         self.neighbouring_words = []
+
+        # word2vec model with vocab size 3_000_000, dimensions 300
         self.w2v = api.load('word2vec-google-news-300')
+        self.isomap = Isomap(radius = 10, n_neighbors = None, n_components = self.SMALL_DIM, path_method = 'auto', metric = 'minkowski', p = 2)
+        self.w2v_small_vectors = self.isomap.fit_transform(self.w2v.vectors)
+        print(f"w2v_small: {self.w2v_small_vectors.shape}")
 
     def in_vocab(self, word: str):
         # this might add unnecessary computation, maybe find a different way
@@ -28,11 +34,12 @@ class WordViner:
     def input(self, word: str):
         big_embedding = self.w2v[word]
         self.current_word = word
-        self.offset = self.project(big_embedding)
+        self.offset = self.project(big_embedding[None]) # add batch dimension of size 1
         self.recalculate_synonyms()
 
     def project(self, big_embedding):
-        small_embedding = np.random.rand(self.SMALL_DIM)
+        batch_size = big_embedding.shape[0]
+        small_embedding = np.random.rand(batch_size, self.SMALL_DIM)
         return small_embedding
 
     def recalculate_synonyms(self):
@@ -43,8 +50,3 @@ class WordViner:
 
     def get_positions(self):
         return self.neighbouring_positions_rel
-
-if __name__ == "__main__":
-    word_viner = WordViner()
-    word_viner.input("cat")
-    print(word_viner.offset.shape)
